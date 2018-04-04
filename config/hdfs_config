@@ -1,0 +1,5 @@
+dfs.nameservices=eosdip
+dfs.ha.namenodes.eosdip=nn1,nn2
+dfs.namenode.rpc-address.eosdip.nn1=nn1.eos.dip.sina.com.cn:8020
+dfs.namenode.rpc-address.eosdip.nn2=nn2.eos.dip.sina.com.cn:8020
+dfs.client.failover.proxy.provider.eosdip=org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider
