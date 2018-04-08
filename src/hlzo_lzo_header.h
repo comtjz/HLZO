@@ -9,30 +9,32 @@
 
 namespace HLZO {
 
-    class HLZOLzofile;
+    class HLZOFile;
 
-    class HLZOLzoheader {
+    class HLZOLzoHeader {
     public:
-        u_int16_t version_;
-        u_int16_t lib_version_;
-        u_int16_t version_needed_to_extract_;
-        u_char method_;
-        u_char level_;
-        u_int32_t flags_;
-        u_int32_t filter_;
-        u_int32_t mode_;
-        u_int32_t mtime_low_;
-        u_int32_t mtime_high_;
-        u_int32_t header_checksum_;
+        u_int16_t _version;
+        u_int16_t _lib_version;
+        u_int16_t _version_needed_to_extract;
 
-        u_int32_t extra_field_len_;
-        u_int32_t extra_field_checksum_;
+        u_char _method;
+        u_char _level;
 
-        const char *method_name_;
+        u_int32_t _flags;
+        u_int32_t _filter;
+        u_int32_t _mode;
+        u_int32_t _mtime_low;
+        u_int32_t _mtime_high;
+        u_int32_t _header_checksum;
 
-        char name_[255 + 1];
+        u_int32_t _extra_field_len;
+        u_int32_t _extra_field_checksum;
 
-        int p_header(HLZOLzofile *ft);
+        const char *_method_name;
+
+        char _name[255 + 1];
+
+        int p_header(HLZOFile& ft);
         int x_get_method();
     };
 

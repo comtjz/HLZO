@@ -26,10 +26,11 @@
 
 // Return code
 #define HLZO_OK                          0
-#define HLZO_ERR_PARAM                   1
+#define HLZO_ERROR                       -1
+#define HLZO_ERR_PARAM                   -2
+#define HLZO_ERR_OPEN                    -3
+#define HLZO_ERR_SYSTEM                  -4
 
-// error of file
-#define HLZO_ERR_OPEN                    51
 
 #define ALIGN_SIZE    4096
 
@@ -113,5 +114,7 @@ enum {
 
     M_UNUSED
 };
+
+#define FILE_NAME_LEN  1024
 
 #endif //HLZO_HLZO_DEF_H

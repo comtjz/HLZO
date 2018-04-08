@@ -20,6 +20,9 @@ namespace HLZO {
     void f_read16(HLZOLzofile *ft, u_int16_t *v);
     void f_read32(HLZOLzofile *ft, u_int32_t *v);
     ssize_t f_read(HLZOLzofile *ft, void *buf, size_t cnt);
+
+
+    void split(const std::string& s, std::string& delim, std::vector<std::string>& ret);
 }
 
 #endif //HLZO_HLZO_UTILS_H

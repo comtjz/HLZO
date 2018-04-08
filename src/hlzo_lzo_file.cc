@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
+#include <vector>
 
 #include "hlzo_lzo_file.h"
 #include "hlzo_utils.h"
@@ -17,11 +18,11 @@ namespace HLZO {
     bool HLZOLzofile::open_fi(const std::string &in_name) {
         int r;
         if (fd_ != -1) {
-            LOG(ERROR) << "lzo file no duplicate open";
+            LOG(ERROR) << "fi can't open again";
             return false;
         }
 
-        if (in_name.length() >= PATH_MAX) {
+        if (in_name.length() >= FILE_NAME_LEN) {
             LOG(ERROR) << "filename too long, name:" << in_name;
             return false;
         }
@@ -29,8 +30,10 @@ namespace HLZO {
         strcpy(name_, in_name.c_str());
 
         r = stat(name_, &st_);
-        if (r != 0)
+        if (r != 0) {
+            LOG(WARNING) << "file can stat";
             memset(&st_, 0, sizeof(st_));
+        }
         if (r == 0 && !S_ISREG(st_.st_mode)) {
             LOG(WARNING) << "not a regular file";
             return false;
@@ -49,10 +52,14 @@ namespace HLZO {
 
     bool HLZOLzofile::open_fo(const std::string &out_name, bool force) {
         if (fd_ != -1) {
-            LOG(ERROR) << "lzo file no duplicate open";
+            LOG(ERROR) << "fo can't open again";
             return false;
         }
 
+        if (out_name.length() >= FILE_NAME_LEN) {
+            LOG(ERROR) << "filename too long, name:" << out_name;
+            return false;
+        }
         strcpy(name_, out_name.c_str());
 
         open_flags_ = O_CREAT | O_WRONLY;
@@ -67,8 +74,7 @@ namespace HLZO {
             if ((open_flags_ & O_EXCL) && errno == EEXIST)
                 LOG(ERROR) << "already exists; not overwritten";
             else {
-                LOG(ERROR) << strerror(errno);
-                LOG(ERROR) << "can't open input file";
+                LOG(ERROR) << "can't open input file, error:" << strerror(errno);
             }
             return false;
         }
@@ -90,8 +96,6 @@ namespace HLZO {
         unsigned char magic[sizeof(lzop_magic)];
 
         l = read_buf(fd_, magic, sizeof(magic));
-        if (part_ > 0 && l <= 0)
-            return -1;
         if (l == (u_int32_t)sizeof(magic))
             r = check_magic(magic);
         else
@@ -152,163 +156,15 @@ namespace HLZO {
         return 3;
     }
 
-}
+    void HLZOLzofile::get_start_and_length(u_int32_t &start, u_int32_t &length) {
+        std::vector<std::string> ret;
+        std::string delim = "/";
+        split(std::string(name_), delim, ret);
+        LOG(INFO) << "filename = " << ret[ret.size() - 1];
 
-#if 0
-bool HLZOLzofile::open_file(const std::string& filename) {
-    if (fd_ != -1) {
-        LOG(ERROR) << "lzo file fd is exist";
-        return false;
-    }
-
-    reset();
-    if (filename.length() >= PATH_MAX) {
-        LOG(ERROR) << "name too long";
-        return false;
-    }
-
-    strcpy(name_, name);
-
-    /* open file */
-    errno = 0;
-    int r = stat(name_, &st_);
-    if (r != 0)
-        memset(&st_, 0, sizeof(st_));
-
-    if (r == 0 && !S_ISREG(st_.st_mode)) {
-        LOG(WARN) << filename << " not a regular file -- skipped";
-        return false;
-    }
-
-    open_flags_ = O_RDONLY;
-
-    if (r)
-        fd_ = open(name_, open_flags_, 0);
-
-    if (fd_ >= 0 && (fd_ == STDIN_FILENO || fd_ == STDOUT_FILENO || fd_ == STDERR_FILENO)) {
-        LOG(ERROR) << filename << " sanity check failed";
-        fd_ = -1;
-    }
-
-    if (fd_ < 0) {
-        LOG(ERROR) << filename << " can't open input file";
-        return false;
-    }
-
-    return true;
-}
-
-void HLZOLzofile::reset() {
-    opt_name_            = -1;
-    part_                = 0;
-    bytes_read_          = 0;
-    bytes_written_       = 0;
-    warn_multipart_      = false;
-    warn_unknown_suffix_ = false;
-}
-
-bool HLZOLzofile::magic() {
-    int r;
-    int l;
-    unsigned char magic[sizeof(lzop_magic)];
-
-    l = read_buf(magic, sizeof(magic));
-    if (part_ > 0 && l <= 0)
-        return false;
-
-    if (l == (int)sizeof(magic))
-        r = check_magic(magic);
-    else
-        r = 1;
-
-    if (part_ > 0 && r == 1) {
-
-    }
-
-    if (r != 0) {
-        LOG(ERROR) << name_ << " check magic fail";
-    }
-
-    return r;
-}
-
-
-int HLZOLzofile::read_header(HLZOLzoheader *h) {
-    int r;
-    int l;
-    unsigned int checksum;
-
-    memset(h, 0 sizeof(HLZOLzoheader));
-    h->version_need_to_extract = 0x0900; /* first public lzop version */
-    h->level = 0;
-    h->method_name = "unknown";
-
-    f_adler32_ = ADLER32_INIT_VALUE;
-    f_crc32_ = CRC32_INIT_VALUE;
-
-    f_read16(&h->version);
-    if (h->version < 0x0900)
-        return 3;
-    f_read16(&h->lib_version);
-    if (h->version >= 0x0940) {
-        f_read16(&h->version_needed_to_extract);
-        if (h->version_needed_to_extract > LZOP_VERSION)
-            return 16;
-        if (h->version_needed_to_extract < 0x0900)
-            return 3;
-    }
-    f_read8(&h->method);
-    if (h->version >= 0x0940)
-        f_read8(&h->level);
-    f_read32(&h->flags);
-    if (h->flags & F_H_FILTER)
-        f_read32(&h->filter);
-    f_read32(&h->mode);
-
-    if (h->flags & F_STDIN)
-        h->mode = 0;
-
-    f_read32(&h->mtime_low);
-    if (h->version >= 0x0940)
-        f_read32(&h->mtime_high);
-    if (h->version < 0x0120) {
-        if (h->mtime_low == 0xffffffffUL)
-            h->mtime_low = 0;
-        h->mtime_high = 0;
-    }
-
-    l = f_read8(ft, NULL);
-    if (l > 0) {
-        char name[255+1];
-        if (f_read(name, l) != l)
-            throw std::exception{};
-        name[l] = 0;
-        // TODO
-    }
-
-    checksum = (h->flags & F_H_CRC32) ? f_crc32_ : f_adler32_;
-    f_read32(&h->header_checksum);
-    if (h->header_checksum != checksum)
-        return 2;
-
-    if (h->method <= 0)
-        return 14;
-    r = x_get_method(h);
-    if (r != 0)
-        return r;
-
-    return 0;
-}
-
-bool HLZOLzoheader::p_header(HLZOLzoheader *h) {
-    int r;
-
-    r = read_header(h);
-    if (r == 0)
-        return 1;
-    if (r < 0) {
-        r = -r;
-
+        delim = "_";
+        std::vector<std::string> ret1;
+        split(ret[ret.size()-1], delim, ret1);
     }
 }
-#endif
+

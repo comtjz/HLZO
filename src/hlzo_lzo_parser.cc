@@ -19,14 +19,18 @@ namespace HLZO {
             return false;
         }
 
+        /* 解析文件名,根据文件名判断lzo文件中是否有magic和header */
+        u_int32_t start = 0, length = 0;
+        //fi_.get_start_and_length(start, length);
+
         bool ok = true;
         int r;
-        for ( ; ok; fi_.part_++) {
+
             r = fi_.magic();
             if (r > 0)
-                return 0;
+                return false;
             if (r < 0)
-                break;
+                return false;
 
             HLZOLzoheader lzoheader;
             r = lzoheader.p_header(&fi_);
@@ -37,8 +41,7 @@ namespace HLZO {
 
             fo_.open_fo("./data/out_test", true);
             r = x_decompress(&fi_, &fo_, &lzoheader);
-            break;
-        }
+
 
         return true;
     }

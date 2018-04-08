@@ -11,7 +11,7 @@
 
 namespace HLZO {
 
-    class HLZOLzoheader;
+    class HLZOLzoHeader;
 
     typedef struct {
         unsigned char *mb_mem;
@@ -30,7 +30,7 @@ namespace HLZO {
 
     class HLZOLzoparser {
     public:
-        HLZOLzoparser() {
+        HLZOLzoparser() : _readFile(nullptr) {
             int r = alloc_mem(0, MAX_COMPRESSED_SIZE(block_size), 0);
             if (!r)
                 throw "memory leak";
@@ -41,7 +41,11 @@ namespace HLZO {
         }
 
         bool decompressFile(const std::string &filename);
-        int x_decompress(HLZOLzofile *ft, HLZOLzofile *fo, HLZOLzoheader *header);
+        int x_decompress(HLZOLzofile *ft, HLZOLzofile *fo, HLZOLzoHeader *header);
+
+        void setHdfsReadFile(hdfsFile readFile) {
+            _readFile = readFile;
+        }
 
     private:
         bool alloc_mem(u_int32_t s1, u_int32_t s2, u_int32_t w) {
@@ -49,14 +53,12 @@ namespace HLZO {
 
             r &= mb_alloc(&blocks_[0], s1, ALIGN_SIZE);
             r &= mb_alloc(&blocks_[1], s2, ALIGN_SIZE);
-            r &= mb_alloc(&wrkmem, w, ALIGN_SIZE);
             if (!r)
                 free_mem();
             return r;
         }
 
         void free_mem() {
-            mb_free(&wrkmem);
             mb_free(&blocks_[1]);
             mb_free(&blocks_[0]);
         }
@@ -69,12 +71,9 @@ namespace HLZO {
     private:
 
         mblock_t blocks_[2];
-        mblock_t wrkmem;
 
         HLZOLzofile fi_;  // 输入文件
         HLZOLzofile fo_;  // 输出文件
-
-        //HLZOLzoheader lzoHeader_; // lzo文件头部
     };
 
 }
