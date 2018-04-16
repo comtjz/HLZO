@@ -5,6 +5,8 @@
 #ifndef HLZO_HLZO_DEF_H
 #define HLZO_HLZO_DEF_H
 
+#include <sys/types.h>
+
 #define ADLER32_INIT_VALUE  1
 #define CRC32_INIT_VALUE    0
 
@@ -30,6 +32,13 @@
 #define HLZO_ERR_PARAM                   -2
 #define HLZO_ERR_OPEN                    -3
 #define HLZO_ERR_SYSTEM                  -4
+#define HLZO_ERR_LZO_MAGIC               -5
+#define HLZO_ERR_LZO_HEADER              -6
+#define HLZO_ERR_LZO_CONTEXT             -7
+#define HLZO_ERR_LZO_SPLIT               -8
+#define HLZO_ERR_LZO_CORRUPTED           -9
+#define HLZO_ERR_HDFS_KIND               -10
+#define HLZO_ERR_HDFS_LENGTH             -11
 
 
 #define ALIGN_SIZE    4096
@@ -116,5 +125,6 @@ enum {
 };
 
 #define FILE_NAME_LEN  1024
+
 
 #endif //HLZO_HLZO_DEF_H

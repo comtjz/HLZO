@@ -1,67 +1,79 @@
 #include <iostream>
-#include <getopt.h>
-#include <glog/logging.h>
+#include <fstream>
+#include <string>
+#include <vector>
 
-#include "hdfs_worker.h"
-#include "my_log.h"
+#include "hlzo.h"
 
+#include "hlzo_hdfs.h"
+#include "hlzo_lzo_index.h"
 
-#include "hlzo_lzo_file.h"
-#include "hlzo_lzo_parser.h"
-
+using namespace std;
 
 /* 入口 */
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
     std::cout << "Hello, World!" << std::endl;
 
-    HLZO::HLZOLzoparser lzoparser;
-    lzoparser.decompressFile("/Users/hongchao1/cpp_workspace/test_hdfs/out.lzo");
-#if 0
-    HLZO::HLZOLzofile lzofile;
-    bool succ = lzofile.f_open("/Users/hongchao1/cpp_workspace/test_hdfs/out_01.lzo");
-    if (succ) {
-        std::cout << "open success" << std::endl;
+#if 1
+    HLZO::HLZO hlzo;
+    hlzo.addHdfsConf("./config/core-site.xml");
+    hlzo.addHdfsConf("./config/hdfs-site.xml");
+    hlzo.addHdfsConf("./config/yarn-site.xml");
+    if (!hlzo.connectHdfs()) {
+        cout << "connect hdfs fail" << endl;
     } else {
-        std::cout << "open fail" << std::endl;
-    }
-    int ret = lzofile.magic();
-    if (ret == 0) {
-        std::cout << "magic success" << std::endl;
-    } else {
-        std::cout << "magic fail, ret = " << ret << std::endl;
-    }
-#endif
-#if 0
-    int opt;
-    std::string conf_file;
-    std::string hdfs_conf_file;
-    while ((opt = getopt(argc, argv, "c:h:")) != -1) {
-        switch (opt) {
-            case 'c':
-                conf_file = optarg;
-                break;
-            case 'h':
-                hdfs_conf_file = optarg;
-                break;
-            default:
-                break;
+        //vector<vector<HLZO::LzoSplit>> splits = hlzo.getLzoSplit("hdfs://eosdip/user/topweibo/training/tian-gan/samples/2018-03-19/data");
+        vector<vector<HLZO::LzoSplit>> splits = hlzo.getLzoSplit("hdfs://eosdip/user/topweibo/training/tian-gan/samples/2018-03-19/data/part-00000.lzo", 5);
+        cout << "splits.size = " << splits.size() << endl;
+
+        for (int i = 0; i < splits.size(); ++i) {
+            bool flag = false;
+            for (int j = 0; j < splits[i].size(); ++j) {
+                if (!flag) {
+                    cout << "path:" << splits[i][j]._filename << endl;
+                    flag = true;
+                }
+                cout << "\tstart:" << splits[i][j]._start << "\tlength:" << splits[i][j]._length << endl;
+            }
         }
     }
-
-    if (hdfs_conf_file.empty()) {
-        std::cerr << "Usage: " << argv[0] << " -c config_file -h hdfs_conf_file" << std::endl;
-        return -1;
-    }
-
-    HLZOMyLog hlzoLog(argv[0]);
-    hlzoLog.setLogDetails("./log", false);
-
-    HdfsWorker hdfsworker("./data");
-    hdfsworker.initHdfsBuilderByFile(hdfs_conf_file);
-    hdfsworker.connectHdfs();
-    hdfsworker.downloadHdfsFile("hdfs://eosdip/user/topweibo", 939535068, 134221229);
-    hdfsworker.disconnectHdfs();
 #endif
-    std::cout << "GoodBye, World!" << std::endl;
-    return 0;
+#if 0
+    HLZO::HLZOHdfs hdfs;
+    if (!hdfs.connectHdfs("./config/hdfs_config")) {
+        std::cout << "connect hdfs fail" << std::endl;
+    } else {
+        //vector<string> infos = hdfs.listHdfsDirectory("hdfs://eosdip/user/topweibo/training/tian-gan/samples/2018-03-19/data");
+        //for (int i = 0; i < infos.size(); ++i) {
+        //    cout << infos[i] << endl;
+        //}
+        hdfs.downHdfsFile("hdfs://eosdip/user/topweibo/training/tian-gan/samples/2018-03-19/data/part-00287.lzo.index");
+        hdfs.showHdfsFileInfo("hdfs://eosdip/user/topweibo/training/tian-gan/samples/2018-03-19/data/part-00287.lzo");
+    }
+#endif
+#if 0
+    HLZO::HLZO hlzo;
+    if (!hlzo.connectHdfs("./config/hdfs_config")) {
+        std::cout << "connect hdfs fail" << std::endl;
+    } else {
+        int r = hlzo.setReadHdfs("hdfs://eosdip/user/topweibo/training/tian-gan/samples/2018-03-19/data/part-00000.lzo",
+                                 671237057,
+                                 41901738);
+
+        if (r == HLZO_OK) {
+            string out;
+            ssize_t ret;
+            ofstream outfile;
+            outfile.open("./test.txt", ios::out|ios::binary);
+            do {
+                ret = hlzo.getNext(out);
+                //std::cout << out.length() << std::endl;
+                outfile << out;
+            } while (ret > 0);
+            outfile.close();
+        }
+    }
+#endif
+
+    std::cout << "Bye, World!" << std::endl;
 }

@@ -2,23 +2,24 @@
 // Created by hongchao1 on 2018/4/8.
 //
 
-#include <errno.h>
+#include <glog/logging.h>
 
+#include "hdfs.h"
 #include "hlzo_def.h"
-#include "hlzo_utils.h"
 #include "hlzo_hdfs_file.h"
 
 namespace HLZO {
-    HLZOHdfsFile::HLZOHdfsFile() : _fs(nullptr), _readFile(nullptr) {
-    }
+
+    HLZOHdfsFile::HLZOHdfsFile() : HLZOFile(), _fs(nullptr), _readFile(nullptr) {}
 
     HLZOHdfsFile::~HLZOHdfsFile() {
         if (_readFile) {
-            closeHdfsFile();
+            closeFile();
         }
     }
 
-    int HLZOHdfsFile::openHdfsFile(const string& file, size_t pos, size_t length) {
+    int HLZOHdfsFile::openFile(const string& file, size_t pos, size_t length) {
+        LOG(INFO) << "HLZO open hdfs file";
         if (_fs == nullptr) {
             LOG(ERROR) << "first hdfs connect";
             return HLZO_ERROR;
@@ -42,12 +43,12 @@ namespace HLZO {
             /* 检查是否是文件 */
             if (fileInfo->mKind == kObjectKindDirectory) {
                 LOG(ERROR) << "hdfs directory";
-                return HLZO_ERR_PARAM;
+                return HLZO_ERR_HDFS_KIND;
             }
 
             if (pos > fileInfo->mSize || (pos + length) > fileInfo->mSize) {
                 LOG(ERROR) << "wrong hdfs file length";
-                return HLZO_ERR_PARAM;
+                return HLZO_ERR_HDFS_LENGTH;
             }
 
             hdfsFreeFileInfo(fileInfo, 1);
@@ -57,6 +58,20 @@ namespace HLZO {
             if (!_readFile) {
                 LOG(ERROR) << "open hdfs file fail";
                 return HLZO_ERR_OPEN;
+            }
+
+            /* 检查文件magic */
+            ssize_t len = checkMagic();
+            if (len < 0) {
+                LOG(ERROR) << "lzo file wrong magic";
+                return HLZO_ERR_LZO_MAGIC;
+            }
+
+            /* 读取头部 */
+            len = checkHead();
+            if (len < 0) {
+                LOG(ERROR) << "lzo file wrong header";
+                return HLZO_ERR_LZO_HEADER;
             }
 
             /* 调整偏移 */
@@ -70,12 +85,63 @@ namespace HLZO {
         return HLZO_OK;
     }
 
-    void HLZOHdfsFile::closeHdfsFile() {
+    void HLZOHdfsFile::closeFile() {
+        LOG(INFO) << "HLZO close hdfs file";
 
+        if (_readFile) {
+            hdfsCloseFile(_fs, _readFile);
+            _readFile = nullptr;
+        }
     }
 
-    bool HLZOHdfsFile::read_check_head() {
-        HLZOLzoHeader header;
+    ssize_t HLZOHdfsFile::tell() {
+        LOG(INFO) << "HLZO tell current offset in the file, in bytes";
+
+        if (_readFile) {
+            return hdfsTell(_fs, _readFile);
+        }
+
+        return -1;
+    }
+
+    ssize_t HLZOHdfsFile::checkMagic() {
+        if (!_readFile) {
+            LOG(ERROR) << "please open file";
+        }
+
+        LOG(INFO) << "check lzo magic";
+        int r;
+        ssize_t l;
+        unsigned char magic[sizeof(lzop_magic)];
+
+        l = read_buf(magic, sizeof(magic));
+        if (l != (ssize_t)sizeof(magic))
+            return HLZO_ERROR;
+
+        if (memcmp(magic, lzop_magic, sizeof(lzop_magic)) == 0)
+            return l;
+
+        return HLZO_ERROR;
+    }
+
+    ssize_t HLZOHdfsFile::checkHead() {
+        if (!_readFile) {
+            LOG(INFO) << "Please open file";
+            return false;
+        }
+
+        LOG(INFO) << "start read head";
+        return _lzoHeader.parse_header(this);
+    }
+
+    ssize_t HLZOHdfsFile::readContext(string& out) {
+        if (!_readFile) {
+            LOG(ERROR) << "Please open file";
+            return false;
+        }
+
+        LOG(INFO) << "start read context";
+        return _lzoContext.parse_context(&_lzoHeader, this, out);
     }
 
     ssize_t HLZOHdfsFile::read_buf(void *vptr, size_t cnt) {
@@ -99,59 +165,4 @@ namespace HLZO {
 
         return (cnt - nleft);
     }
-
-    void HLZOHdfsFile::read32(u_int32_t *v) {
-        unsigned char b[4];
-        if (read_buf(b, 4) != 4) {
-            LOG(ERROR) << "read32 fail, error:" << strerror(errno);
-            throw "Read Fail";
-        }
-
-        *v = get_be32(b);
-    }
-
-    int HLZOHdfsFile::f_read8(HLZOLzofile *ft, unsigned char *b) {
-        unsigned char bb;
-        if (read_buf(&bb, 1) != 1) {
-            LOG(ERROR) << "f_read8 fail, error:" << strerror(errno);
-            throw "Read Fail";
-        }
-        ft->f_adler32_ = lzo_adler32(ft->f_adler32_, &bb, 1);
-        ft->f_crc32_ = lzo_crc32(ft->f_crc32_, &bb, 1);
-        if (b)
-            *b = bb;
-        return bb;
-    }
-
-    void HLZOHdfsFile::f_read16(HLZOLzofile *ft, u_int16_t *v) {
-        unsigned char b[2];
-        if (read_buf(b, 2) != 2) {
-            LOG(ERROR) << "f_read16 fail, error:" << strerror(errno);
-            throw "Read fail";
-        }
-        ft->f_adler32_ = lzo_adler32(ft->f_adler32_, b, 2);
-        ft->f_crc32_ = lzo_crc32(ft->f_crc32_, b, 2);
-        *v = get_be16(b);
-    }
-
-    void HLZOHdfsFile::f_read32(HLZOLzofile *ft, u_int32_t *v) {
-        unsigned char b[4];
-        if (read_buf(b, 4) != 4) {
-            LOG(ERROR) << "f_read32 fail, error:" << strerror(errno);
-            throw "Read fail";
-        }
-        ft->f_adler32_ = lzo_adler32(ft->f_adler32_, b, 4);
-        ft->f_crc32_ = lzo_crc32(ft->f_crc32_, b, 4);
-        *v = get_be32(b);
-    }
-
-    ssize_t HLZOHdfsFile::f_read(HLZOLzofile *ft, void *buf, size_t cnt) {
-        cnt = read_buf(ft->fd_, buf, cnt);
-        if (cnt > 0) {
-            ft->f_adler32_ = lzo_adler32(ft->f_adler32_, (const unsigned char *)buf, cnt);
-            ft->f_crc32_ = lzo_crc32(ft->f_crc32_, (const unsigned char *)buf, cnt);
-        }
-        return cnt;
-    }
-
 }

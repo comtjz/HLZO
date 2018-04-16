@@ -7,9 +7,9 @@
 
 #include <sys/types.h>
 
-namespace HLZO {
+#include "hlzo_file.h"
 
-    class HLZOFile;
+namespace HLZO {
 
     class HLZOLzoHeader {
     public:
@@ -34,10 +34,9 @@ namespace HLZO {
 
         char _name[255 + 1];
 
-        int p_header(HLZOFile& ft);
+        ssize_t parse_header(HLZOFile *reafFile);
         int x_get_method();
     };
-
 }
 
 #endif //HLZO_HLZO_LZO_HEADER_H

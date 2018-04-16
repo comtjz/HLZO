@@ -7,48 +7,42 @@
 
 #include <string>
 #include <map>
+#include <vector>
 
 #include "hdfs.h"
-#include "hlzo_lzo_parser.h"
-#include "hlzo_hdfs_file.h"
+
+#include "hlzo_conf.h"
 
 using std::string;
 using std::map;
+using std::vector;
 
 namespace HLZO {
     class HLZOHdfsConnector {
     public:
-        HLZOHDfsConnector();
+        HLZOHdfsConnector();
 
-        virtual ~HLZOHdfsConnector();
+        ~HLZOHdfsConnector();
 
-        /* TODO 这里传入了特定lzo parser,未来如果有多种parser,可以使用继承多态 */
-        void setParser(HLZOLzoparser *parser);
-
-        bool initHdfsBuilderByFile(const string& conf_file);
+        bool isEffectConf(HLZOConf& conf);
+        bool initHdfsBuilder(HLZOConf& conf);
 
         bool connectHdfs();
         void disconnectHdfs();
 
-        int openHdfsFile(const string& file, size_t pos, size_t length);
-        void closeHdfsFile();
-
-        int64_t readHead();
-        int64_t readContext(const string& file, size_t pos, size_t length);
+        hdfsFS getHdfsFS() { return _fs; }
 
     private:
-        int load_conf(const string& conf_path);
-
-    private:
-        HLZOLzoparser *_parser;
-
-        /* hdfs相关 */
+        /* HDFS相关 */
         hdfsFS _fs;
         struct hdfsBuilder *_hdfsBuilder;
 
-        HLZOHdfsFile _hdfsFile;
-
+        /* hdfs builder 配置 */
         map<string, string> _hdfsBuilderConf;
+
+        /* 这里定义的连接hdfs的配置名是写死的 */
+        /* 这两个配置写死了,连接hdfs还需要几个配置名, 可通过nameservices加规定字符串得出 */
+        static vector<string> _connect_conf_param;
     };
 }
 

@@ -1,265 +1,160 @@
 //
 // Created by hongchao1 on 2018/4/3.
 //
+
 #include <glog/logging.h>
-#include <errno.h>
 
 #include "hlzo_def.h"
-#include "hlzo_utils.h"
 #include "hlzo_lzo_header.h"
 
 namespace HLZO {
 
-    int HLZOLzoHeader::p_header(HLZOFile &ft) {
+    ssize_t HLZOLzoHeader::parse_header(HLZOFile* ft) {
         int r;
         int l;
         u_int32_t checksum;
+        ssize_t length = 0;
 
         memset(this, 0, sizeof(*this));
         _version_needed_to_extract = 0x0900; /* first public lzop version */
         _level = 0;
         _method_name = "unknown";
 
-        ft._f_adler32 = ADLER32_INIT_VALUE;
-        ft._f_crc32 = CRC32_INIT_VALUE;
+        ft->_f_adler32 = ADLER32_INIT_VALUE;
+        ft->_f_crc32 = CRC32_INIT_VALUE;
 
-        ft.f_read16(&_version);
-        LOG(INFO) << "TEST " << std::hex << _version;
-        if (version_ < 0x0900)
-            return 3;
-        ft.f_read16(&_lib_version);
-        LOG(INFO) << "TEST " << std::hex << _lib_version;
-        if (_version >= 0x0900) {
-            ft.f_read16(&_version_needed_to_extract);
-            LOG(INFO) << "TEST " << std::hex << _version_needed_to_extract;
-            if (_version_needed_to_extract > LZOP_VERSION)
-                return 16;
-            if (version_needed_to_extract_ < 0x0900)
-                return 3;
-        }
-        ft.f_read8(ft, &_method);
-        LOG(INFO) << "TEST " << std::hex << (int)_method;
+        ft->f_read16(&_version);
+        length += 2;
+        LOG(INFO) << "version = " << std::hex << _version;
+        if (_version < 0x0900)
+            return HLZO_ERROR;
+        ft->f_read16(&_lib_version);
+        length += 2;
+        LOG(INFO) << "lib_version = " << std::hex << _lib_version;
         if (_version >= 0x0940) {
-            ft.f_read8(&_level);
-            LOG(INFO) << "TEST " << std::hex << (int)_level;
+            ft->f_read16(&_version_needed_to_extract);
+            length += 2;
+            LOG(INFO) << "version_needed_to_extract = " << std::hex << _version_needed_to_extract;
+            if (_version_needed_to_extract > LZOP_VERSION)
+                return HLZO_ERROR;
+            if (_version_needed_to_extract < 0x0900)
+                return HLZO_ERROR;
         }
-        ft.f_read32(&_flags);
-        LOG(INFO) << "TEST " << std::hex << _flags;
+        ft->f_read8(&_method);
+        length += 1;
+        LOG(INFO) << "method = " << (int)_method;
+        if (_version >= 0x0940) {
+            ft->f_read8(&_level);
+            length += 1;
+            LOG(INFO) << "level = " << (int)_level;
+        }
+        ft->f_read32(&_flags);
+        length += 4;
+        LOG(INFO) << "flags = " << std::hex << _flags;
         if (_flags & F_H_FILTER) {
-            ft.f_read32(&_filter);
-            LOG(INFO) << "TEST " << std::hex << _filter;
+            ft->f_read32(&_filter);
+            length += 4;
+            LOG(INFO) << "filter = " << std::hex << _filter;
         }
-        ft.f_read32(&_mode);
-        LOG(INFO) << "TEST " << std::hex << _mode;
+        ft->f_read32(&_mode);
+        length += 4;
+        LOG(INFO) << "mode = " << _mode;
         if (_flags & F_STDIN)
             _mode = 0;
-        ft.f_read32(&_mtime_low);
-        LOG(INFO) << "TEST " << std::hex << _mtime_low;
-        if (version >= 0x0940) {
-            ft.f_read32(&_mtime_high);
-            LOG(INFO) << "TEST " << std::hex << _mtime_high;
-        }
 
+        ft->f_read32(&_mtime_low);
+        length += 4;
+        LOG(INFO) << "mtime_low = " << _mtime_low;
+        if (_version >= 0x0940) {
+            ft->f_read32(&_mtime_high);
+            length += 4;
+            LOG(INFO) << "mtime_high = " << _mtime_high;
+        }
         if (_version < 0x0120) {
             if (_mtime_low == 0xffffffffUL)
                 _mtime_low = 0;
             _mtime_high = 0;
         }
 
-        l = ft.f_read8(NULL);
+        l = ft->f_read8(NULL);
+        length += 1;
+        LOG(INFO) << "l = " << l;
         if (l > 0) {
             char name[255 + 1];
-            if (ft.f_read(name, l) != l) {
-                LOG(ERROR) << "read error, " << strerror(errno);
-                return -1;
+            if (ft->f_read(name, l) != l) {
+                return HLZO_ERROR;
             }
+            length += l;
             name[l] = 0;
-            LOG(INFO) << "TEST " << name;
+            // TODO
         }
 
-        chechsum = (_flags & F_H_CRC32) ? ft._f_crc32 : ft._f_adler32;
-        LOG(INFO) << "TEST " << std::hex << checksum;
-        ft.f_read32(&header_checksum);
-        LOG(INFO) << "TEST " << std::hex << _header_checksum;
+        checksum = (_flags & F_H_CRC32) ? ft->_f_crc32 : ft->_f_adler32;
+        ft->f_read32(&_header_checksum);
+        length += 4;
         if (_header_checksum != checksum)
-            return 2;
+            return HLZO_ERROR;
 
         if (_method <= 0)
-            return 14;
+            return HLZO_ERROR;
 
         r = x_get_method();
-        if (r != 0) {
-            LOG(ERROR) << "get method fail, ret = " << r;
-            return r;
-        }
+        if (r != 0)
+            return HLZO_ERROR;
 
         if (_flags & F_RESERVED)
-            return 13;
+            return HLZO_ERROR;
 
         if (_flags & F_H_EXTRA_FIELD) {
             u_int32_t k;
 
-            ft._f_adler32 = ADLER32_INIT_VALUE;
-            ft._f_crc32 = CRC32_INIT_VALUE;
-            ft.f_read32(&_extra_field_len);
-            for (k = 0; i < _extra_field_len; ++k)
-                (void) ft.f_read8(NULL);
-            checksum = (_flags & F_H_CRC32) ? ft._f_crc32 : ft._f_adler32;
-            ft.f_read32(&_extra_field_checksum);
-            if (_extra_field_checksum != checksum)
-                return 3;
-        }
-
-        return 0;
-    }
-
-#if 0
-    int HLZOLzoheader::p_header(HLZOLzofile *ft) {
-        int r;
-        int l;
-        u_int32_t checksum;
-
-        memset(this, 0, sizeof(*this));
-        version_needed_to_extract_ = 0x0900;  /* first public lzop version */
-        level_ = 0;
-        method_name_ = "unknown";
-
-        ft->f_adler32_ = ADLER32_INIT_VALUE;
-        ft->f_crc32_ = CRC32_INIT_VALUE;
-
-        f_read16(ft, &version_);
-        LOG(INFO) << std::hex << version_;
-        if (version_ < 0x0900)
-            return 3;
-        f_read16(ft, &lib_version_);
-        LOG(INFO) << std::hex << lib_version_;
-        if (version_ >= 0x0900) {
-            f_read16(ft, &version_needed_to_extract_);
-            LOG(INFO) << std::hex << version_needed_to_extract_;
-            if (version_needed_to_extract_ > LZOP_VERSION)
-                return 16;
-            if (version_needed_to_extract_ < 0x0900)
-                return 3;
-        }
-        f_read8(ft, &method_);
-        LOG(INFO) << std::hex << (int)method_;
-        if (version_ >= 0x0940) {
-            f_read8(ft, &level_);
-            LOG(INFO) << std::hex << (int)level_;
-        }
-        f_read32(ft, &flags_);
-        LOG(INFO) << std::hex << flags_;
-        if (flags_ & F_H_FILTER)
-            f_read32(ft, &filter_);
-        f_read32(ft, &mode_);
-        LOG(INFO) << std::hex << "mode " << mode_;
-        if (flags_ & F_STDIN)
-            mode_ = 0;
-        f_read32(ft, &mtime_low_);
-        LOG(INFO) << std::hex << mtime_low_;
-        if (version_ >= 0x0940) {
-            f_read32(ft, &mtime_high_);
-            LOG(INFO) << std::hex << mtime_high_;
-        }
-        if (version_ < 0x0120) {
-            if (mtime_low_ == 0xffffffffUL)
-                mtime_low_ = 0;
-            mtime_high_ = 0;
-        }
-
-        l = f_read8(ft, NULL);
-        LOG(INFO) << "l = " << l;
-        if (l > 0) {
-            char name[255+1];
-            if (f_read(ft, name, l) != l) {
-                LOG(ERROR) << "read error, " << strerror(errno);
-                return -1;
+            ft->_f_adler32 = ADLER32_INIT_VALUE;
+            ft->_f_crc32 = CRC32_INIT_VALUE;
+            ft->f_read32(&_extra_field_len);
+            length += 4;
+            for (k = 0; k < _extra_field_len; ++k) {
+                (void) ft->f_read8(NULL);
+                length += 1;
             }
-            name[l] = 0;
-            LOG(INFO) << name;
-            // TODO
+            checksum = (_flags & F_H_CRC32) ? ft->_f_crc32 : ft->_f_adler32;
+            ft->f_read32(&_extra_field_checksum);
+            length += 4;
+            if (_extra_field_checksum != checksum)
+                return HLZO_ERROR;
         }
 
-        checksum = (flags_ & F_H_CRC32) ? ft->f_crc32_ : ft->f_adler32_;
-        LOG(INFO) << std::hex << checksum;
-        f_read32(ft, &header_checksum_);
-        LOG(INFO) << std::hex << header_checksum_;
-        if (header_checksum_ != checksum)
-            return 2;
-
-        if (method_ <= 0)
-            return 14;
-
-        r = x_get_method();
-        if (r != 0) {
-            LOG(ERROR) << "get method fail, ret = " << r;
-            return r;
-        }
-
-        if (flags_ & F_RESERVED)
-            return 13;
-
-        if (flags_ & F_H_EXTRA_FIELD) {
-            u_int32_t k;
-
-            ft->f_adler32_ = ADLER32_INIT_VALUE;
-            ft->f_crc32_ = CRC32_INIT_VALUE;
-            f_read32(ft, &extra_field_len_);
-            for (k = 0; k < extra_field_len_; k++)
-                (void) f_read8(ft, NULL);
-            checksum = (flags_ & F_H_CRC32) ? ft->f_crc32_ : ft->f_adler32_;
-            f_read32(ft, &extra_field_checksum_);
-            if (extra_field_checksum_ != checksum)
-                return 3;
-        }
-
-        return 0;
+        return length;
     }
-#endif
 
     int HLZOLzoHeader::x_get_method() {
         int r = -1;
 
-        if (method_ == M_LZO1X_1) {
-            method_name_ = "LZO1X-1";
-            if (level_ == 0)
-                level_ = 3;
-        } else if (method_ == M_LZO1X_1_15) {
-            method_name_ = "LZO1X_1(15)";
-            if (level_ == 0)
-                level_ = 1;
-        } else if (method_ == M_LZO1X_999) {
+        if (_method == M_LZO1X_1) {
+            _method_name = "LZO1X-1";
+            if (_level == 0)
+                _level = 3;
+        } else if (_method == M_LZO1X_1_15) {
+            _method_name = "LZO1X_1(15)";
+            if (_level == 0)
+                _level = 1;
+        } else if (_method == M_LZO1X_999) {
             static char s[11+1] = "LZO1X-999  ";
             s[9] = 0;
-            if (level_ == 0)
-                level_ = 9;
-            else if (version_ >= 0x0950 && version_ >= 0x1020) {
+            if (_level == 0)
+                _level = 9;
+            else if (_version >= 0x0950 && _version >= 0x1020) {
                 s[9] = '/';
-                s[10] = (char)(level_ + '0');
+                s[10] = (char)(_level + '0');
             }
-            method_name_ = s;
+            _method_name = s;
         } else {
             return -1;
         }
 
-        if (level_ < 1 || level_ > 9)
+        if (_level < 1 || _level > 9)
             return 15;
 
         return 0;
     }
 
-    int parseHeadFromHdfs(hdfsFile readFile, HLZOLzofile *ft) {
-        int r;
-        int l;
-        u_int32_t checksum;
-
-        memset(this, 0, sizeof(*this));
-        version_needed_to_extract_ = 0x0900;  /* first public lzop version */
-        level_ = 0;
-        method_name_ = "unknown";
-
-        ft->f_adler32_ = ADLER32_INIT_VALUE;
-        ft->f_crc32_ = CRC32_INIT_VALUE;
-
-    }
 }
